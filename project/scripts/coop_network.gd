@@ -7,6 +7,24 @@ extends RefCounted
 const Paths=preload("res://scripts/game_data_paths.gd")
 const GAME_PORT:=54555
 const BEACON_PORT:=54556
+## The ad-hoc ZeroTier network the embedded node joins: ffSSSSEEEE000000 for
+## the game's port, no controller, no account, no member approval. A PC joins
+## the same network with the ZeroTier app (zerotier-cli join <id>) and is then
+## reachable from the phones with no port forwarding.
+static func zerotier_network_id(port:int=GAME_PORT)->String:
+    return "ff%04x%04x000000" % [port,port]
+
+## The ad-hoc network hands out IPv6 addresses in fd00::/8. One of those is
+## reached through the ZeroTier node (embedded on phones, the ZeroTier app on
+## desktop), never by plain TCP to the internet.
+static func is_zerotier_address(address:String)->bool:
+    return ":" in address and address.to_lower().begins_with("fd")
+
+## This machine's address on the ad-hoc network, "" when it is not on it.
+static func zerotier_address()->String:
+    for value in IP.get_local_addresses():
+        if is_zerotier_address(value):return value
+    return ""
 ## Lobby directory (see lobby-directory/ beside the source package). A [lobby] url
 ## in zerotier.cfg inside the game data folder overrides it without a rebuild;
 ## [lobby] force=true makes non-Android builds use it too, for testing.

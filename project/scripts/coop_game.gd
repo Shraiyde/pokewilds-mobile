@@ -1138,10 +1138,12 @@ func _lobby_record()->Dictionary:
         "accounts":session.accounts!=null,"kind":"server" if Server.active else "game","version":Session.build_version(),"compat":Session.compat_id()}
 
 ## Joins a dedicated server from the JOIN GAME list (a "server" entry of
-## coop_lobby.gd) over the internet, straight to its address and port as MY
-## SERVERS does, never through ZeroTier. A server with player IDs (entry
-## "accounts") takes `player_id` and `password` as the ID's login; otherwise
-## `password` is its shared password ("" for none).
+## coop_lobby.gd) straight to its address and port as MY SERVERS does. A server
+## on the internet is reached directly; one on the ad-hoc ZeroTier network
+## (fd00::/8) goes through ZeroTier instead (see JOIN), so no port forwarding
+## is needed. A server with player IDs (entry "accounts") takes `player_id`
+## and `password` as the ID's login; otherwise `password` is its shared
+## password ("" for none).
 func join_listed_server(entry:Dictionary,player_id:String,password:String)->void:
     var account:=bool(entry.get("accounts",false))
     join_lobby={"name":String(entry.get("name","SERVER")),"address":String(entry.get("address","")),"port":int(entry.get("port",Network.GAME_PORT)),
@@ -1206,8 +1208,12 @@ func _choose(action:String,value:String)->void:
         preload("res://scripts/crafting_data.gd").online_enabled=true
         active=true;hosting=false;_loading=true
         # A typed address is reached directly, never through the lobby network.
-        # A dedicated server from the list is on the internet, not on ZeroTier.
-        var direct:bool=bool(join_lobby.get("direct",false)) or join_lobby.get("kind")=="server"
+        # A dedicated server from the list is on the internet, not on ZeroTier,
+        # unless its address is on the ad-hoc ZeroTier network (fd00::/8): then
+        # it goes through the lobby network like any other ZeroTier host, so a
+        # server behind CGNAT or without port forwarding still answers.
+        var zt:=Network.is_zerotier_address(value)
+        var direct:bool=(bool(join_lobby.get("direct",false)) or join_lobby.get("kind")=="server") and not zt
         if not direct:Network.start()
         var deadline=Time.get_ticks_msec()+120000
         while active and not direct and Network.status().state!="ready":
