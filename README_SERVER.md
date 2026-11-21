@@ -110,6 +110,9 @@ parte come gioco, e fa da server solo se gli si dà `--headless --server`.
     entra con lo stesso account e usa sul telefono l'indirizzo che il server
     mostra alla riga **Tailscale/VPN** (inizia con `100.`), per esempio
     `100.x.y.z:54555`;
+  - usare **ZeroTier** (vedi "ZeroTier: senza port forwarding" qui sotto):
+    lo installi solo sul PC del server e lo unisci alla rete del gioco: i
+    telefoni non hanno bisogno di niente, né app né account;
   - se compare la riga "Phones with IPv6 may still try ...", i telefoni con
     IPv6 (molte reti mobili) possono provare quell'indirizzo, se il router lo
     lascia passare.
@@ -119,6 +122,39 @@ parte come gioco, e fa da server solo se gli si dà `--headless --server`.
   usare un nome DNS dinamico gratuito (DuckDNS, No-IP...): nel gioco si può
   scrivere anche un nome, per esempio `casa.duckdns.org:54555`.
 - Il **codice** di 8 caratteri funziona solo con la porta predefinita 54555.
+
+## ZeroTier: senza port forwarding
+
+Se non vuoi o non puoi aprire la porta sul router (CGNAT, UPnP spento, due
+router in fila), il server può farsi raggiungere dalla rete ZeroTier del
+gioco, la stessa che usano i telefoni tra loro: nessun account, nessuna app
+sui telefoni, nessun port forwarding.
+
+1. **Sul PC del server** installa ZeroTier (https://www.zerotier.com/download/)
+   e unisciti alla rete del gioco, che non ha controller né approvazioni:
+
+   ```
+   zerotier-cli join ffd51bd51b000000
+   ```
+
+   Su Windows puoi farlo anche dall'icona di ZeroTier: "Join Network..." e
+   scrivi `ffd51bd51b000000`.
+2. **Riavvia il server** (o scrivi `address` nella sua finestra): compare una
+   riga nuova:
+
+   ```
+   SERVER  ZeroTier:      [fd00:...]:54555
+   ```
+
+3. **Sul telefono**: MULTIPLAYER > MY SERVERS > ADD SERVER, e come indirizzo
+   scrivi quello della riga **ZeroTier**, con le parentesi quadre, per esempio
+   `[fd00:...]:54555`. Nient'altro: il telefono è già sulla stessa rete
+   ZeroTier attraverso il gioco.
+
+Finché il PC è su quella rete, l'indirizzo ZeroTier non cambia mai (a
+differenza dell'IP pubblico). Se il server è anche in lista JOIN GAME, con
+`listed=true`, e non ha un indirizzo pubblico, si annuncia con l'indirizzo
+ZeroTier e i telefoni lo raggiungono toccandolo, come sopra.
 
 ## Giocatori: ID e password
 
@@ -224,10 +260,12 @@ lasciando com'erano i commenti.
 Con `listed=true` in `server.cfg` (oppure `list on` nella finestra) il server
 compare nella lista **JOIN GAME** dei telefoni, accanto alle partite degli
 altri giocatori, con nome del mondo, giocatori collegati e massimi. Dal
-telefono basta toccarlo: si collega direttamente all'indirizzo **From
-outside** del server (non passa dalla rete ZeroTier delle partite dei
-telefoni), quindi la porta deve essere raggiungibile da fuori come sopra; con
-gli ID attivi il telefono chiede ID e password. Il server si annuncia ogni
+telefono basta toccarlo: si collega all'indirizzo **From outside** del server,
+quindi la porta deve essere raggiungibile da fuori come sopra. Se il server non
+ha un indirizzo pubblico (per esempio è dietro CGNAT) e sta sulla rete ZeroTier
+del gioco, si annuncia invece con il suo indirizzo ZeroTier e il telefono lo
+raggiunge attraverso quella rete, senza port forwarding (vedi "ZeroTier: senza
+port forwarding"). Con gli ID attivi il telefono chiede ID e password. Il server si annuncia ogni
 mezzo minuto e si toglie da solo con `list off` o quando si spegne (se si
 spegne di colpo sparisce dalla lista entro un minuto e mezzo). Nella finestra:
 "SERVER listed in the online games list as ..." quando è in lista.
