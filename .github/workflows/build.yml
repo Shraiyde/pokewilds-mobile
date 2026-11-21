@@ -1,17 +1,12 @@
 name: PokeWilds build
 
-# One release per commit with every file: the iPhone IPA, the Android APK, the
-# Windows/macOS/Linux games and the Windows/macOS/Linux servers. It starts as a draft (nobody sees it), each build
-# uploads its file, and it is published as "Latest" only when all builds
+# One release per commit: the Android APK, the Windows/macOS/Linux games and
+# the Windows/macOS/Linux servers. It starts as a draft (nobody sees it), each
+# build uploads its file, and it is published as "Latest" when the APK build
 # passed; otherwise the draft is deleted. So releases/latest/download/<file>
 # always gives a matching set.
 on:
   workflow_dispatch:
-    inputs:
-      fallback:
-        description: "Skip the macOS job and build the IPA with the xtool fallback (to test it)"
-        type: boolean
-        default: false
   push:
     branches: [main]
     tags: ["v*"]
@@ -28,8 +23,6 @@ env:
 # that artifacts fill up.
 permissions:
   contents: write
-  # ios_xtool and ios read each other's state (actions/runs/<id>/jobs).
-  actions: read
 
 jobs:
   draft:
@@ -46,14 +39,13 @@ jobs:
         with:
           fetch-depth: 0
       # Zero-padded: GitHub lists releases by tag name, so build-0010 must come
-      # after build-0009. The IPA's visible version is MAJOR.MINOR from the iOS
+      # after build-0009. The release version is MAJOR.MINOR from the first
       # preset's short_version plus the commit count (0.10.0 -> 0.10.<n>); raise
-      # MAJOR.MINOR there by hand for bigger steps. Its internal version
-      # (CFBundleVersion) is the commit count too. Counting commits, not runs,
-      # gives a local build of the same commit (tools/ios_xtool) the same version.
+      # MAJOR.MINOR there by hand for bigger steps. Counting commits, not runs,
+      # gives a local build of the same commit the same version.
       - id: names
         run: |
-          # The iOS preset's, the first: the macOS presets carry one too.
+          # The first preset's short_version in export_presets.cfg.
           base=$(sed -n 's/^application\/short_version="\([0-9]*\.[0-9]*\).*/\1/p' project/export_presets.cfg | head -n 1)
           test -n "$base"
           count=$(git rev-list --count HEAD)
@@ -76,8 +68,7 @@ jobs:
           [ -s notes.md ] || git log -1 --pretty=%B > notes.md
           echo "" >> notes.md
           echo "---" >> notes.md
-          echo "IPA version $VERSION ($BUNDLE). IPA, APK and server built from ${GITHUB_SHA::8}: they play together (a host refuses players of another build)." >> notes.md
-          echo "- **Pokewilds-unsigned.ipa**: sign it with Feather (or similar) before installing." >> notes.md
+          echo "APK version $VERSION ($BUNDLE). APK and server built from ${GITHUB_SHA::8}: they play together (a host refuses players of another build)." >> notes.md
           echo "- **Pokewilds-arm64.apk**: Android (64-bit ARM phones), signed; installs over the previous APK." >> notes.md
           echo "- **PokeWilds-Server-win64.zip**: unzip it and run start_server.bat. Guide: README_SERVER.md." >> notes.md
           echo "- **PokeWilds-Server-linux-x86_64.tar.gz** and **PokeWilds-Server-macos.zip**: the same server; unpack it and run ./start_server.sh. Guide: README_SERVER.md." >> notes.md
@@ -183,334 +174,6 @@ jobs:
             echo "::notice::native: $native / GDScript: $script"
             [ -n "$native" ] && [ "$native" = "$script" ]
           done
-
-  ios:
-    # Runs alongside the smoke test; publish needs the smoke test too, so only
-    # a pack that passed it is released. ios_xtool watches this job: when no Mac
-    # picks it up within a minute, xtool builds the IPA instead, and this job,
-    # if a Mac comes later, stops at its first step.
-    needs: draft
-    if: ${{ !inputs.fallback }}
-    runs-on: macos-26
-    env:
-      TAG: ${{ needs.draft.outputs.tag }}
-    steps:
-      - name: Still needed?
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          taken=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=50" \
-            --jq '.jobs[] | select(.name == "ios_xtool") | .steps[] | select(.name == "Take over from the Mac job" and .conclusion == "success") | .name' || true)
-          if [ -n "$taken" ]; then
-            echo "::notice::ios_xtool already builds this IPA (no Mac within a minute)"
-            echo "SKIP=true" >> "$GITHUB_ENV"
-          fi
-
-      - uses: actions/checkout@v4
-        if: env.SKIP != 'true'
-
-      - uses: actions/checkout@v4
-        if: env.SKIP != 'true'
-        with:
-          repository: godotengine/godot
-          ref: ${{ env.GODOT_VERSION }}-stable
-          path: godot-src
-
-      - name: Install Godot + export templates
-        if: env.SKIP != 'true'
-        run: |
-          base=https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable
-          curl -sSL -o godot.zip "$base/Godot_v${GODOT_VERSION}-stable_macos.universal.zip"
-          curl -sSL -o templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
-          unzip -q godot.zip
-          tpl="$HOME/Library/Application Support/Godot/export_templates/${GODOT_VERSION}.stable"
-          mkdir -p "$tpl"
-          unzip -q -j templates.tpz 'templates/ios.zip' 'templates/version.txt' -d "$tpl"
-          echo "GODOT=$PWD/Godot.app/Contents/MacOS/Godot" >> "$GITHUB_ENV"
-          echo "TPL=$tpl" >> "$GITHUB_ENV"
-          python3 -m venv "$RUNNER_TEMP/scons" && "$RUNNER_TEMP/scons/bin/pip" -q install scons
-
-      - uses: actions/cache@v4
-        if: env.SKIP != 'true'
-        with:
-          path: ~/.scons_cache
-          # One cache per build profile and game module (see the smoke job).
-          key: scons-ios-${{ env.GODOT_VERSION }}-${{ hashFiles('.github/engine/custom.py', 'engine_modules/**') }}
-          restore-keys: scons-ios-${{ env.GODOT_VERSION }}-
-
-      - name: Build stripped engine (iOS arm64)
-        if: env.SKIP != 'true'
-        working-directory: godot-src
-        run: |
-          "$RUNNER_TEMP/scons/bin/scons" platform=ios arch=arm64 target=template_release profile="$ENGINE_PROFILE" lto=thin \
-            cache_path="$HOME/.scons_cache" -j"$(sysctl -n hw.ncpu)"
-          ls -la bin
-
-      - name: Swap engine library into the iOS template
-        if: env.SKIP != 'true'
-        run: |
-          work="$RUNNER_TEMP/ios_template"
-          unzip -q "$TPL/ios.zip" -d "$work"
-          lib="$work/libgodot.ios.release.xcframework/ios-arm64/libgodot.a"
-          test -f "$lib" || { find "$work" -name '*.a'; exit 1; }
-          echo "::notice::official engine lib $(du -h "$lib" | cut -f1)"
-          cp godot-src/bin/libgodot.ios.template_release.arm64.a "$lib"
-          echo "::notice::stripped engine lib $(du -h "$lib" | cut -f1)"
-          rm "$TPL/ios.zip" && (cd "$work" && zip -qry "$TPL/ios.zip" .)
-
-      - name: Minify JSON data
-        if: env.SKIP != 'true'
-        run: python3 .github/engine/minify_json.py project
-
-      # The commit this build comes from, and its compat id (after minifying, as
-      # every build does): hosts refuse players of a build with another compat id.
-      # The IPA's visible and internal versions go up with every build.
-      - name: Stamp build id and IPA version
-        if: env.SKIP != 'true'
-        env:
-          VERSION: ${{ needs.draft.outputs.version }}
-          BUNDLE: ${{ needs.draft.outputs.bundle }}
-        run: |
-          echo "$GITHUB_SHA" > project/build_id.txt
-          python3 tools/compat_id.py project > project/compat_id.txt
-          # The title screen shows it in its corner.
-          echo "$VERSION" > project/build_version.txt
-          python3 - <<'EOF'
-          import os, re
-          path = "project/export_presets.cfg"
-          text = open(path, newline="").read()
-          text = re.sub(r'(?m)^application/short_version="[^"]*"', 'application/short_version="%s"' % os.environ["VERSION"], text)
-          text = re.sub(r'(?m)^application/version="[^"]*"', 'application/version="%s"' % os.environ["BUNDLE"], text)
-          open(path, "w", newline="").write(text)
-          EOF
-          grep -n '^application/short_version=\|^application/version=' project/export_presets.cfg
-
-      # The phone's battery for the HUD (an iOS plugin): Godot's export links
-      # this library into the Xcode project. Same deployment target as the preset.
-      - name: Build the battery plugin
-        if: env.SKIP != 'true'
-        working-directory: project/ios/plugins/pokewilds_battery
-        run: |
-          xcrun -sdk iphoneos clang++ -arch arm64 -miphoneos-version-min=15.0 -O2 -fobjc-arc \
-            -c pokewilds_battery.mm -o "$RUNNER_TEMP/pokewilds_battery.o"
-          xcrun -sdk iphoneos ar rcs libpokewilds_battery.a "$RUNNER_TEMP/pokewilds_battery.o"
-
-      # The lobby list's address and password (project/lobby_server.txt, never
-      # in the repository): the secret LOBBY_SERVER holds the file's two lines.
-      # Without it the build runs, but JOIN GAME has no online lobby list.
-      - name: Lobby list address
-        if: env.SKIP != 'true'
-        env:
-          LOBBY_SERVER: ${{ secrets.LOBBY_SERVER }}
-        run: |
-          if [ -n "$LOBBY_SERVER" ]; then printf '%s\n' "$LOBBY_SERVER" > project/lobby_server.txt
-          else echo "::warning::No LOBBY_SERVER secret: this IPA has no online lobby list"; fi
-
-      # Embedded ZeroTier for ONLINE play (an iOS plugin with libzt): libzt is
-      # compiled once per commit and patch set, then only the plugin.
-      - uses: actions/cache@v4
-        if: env.SKIP != 'true'
-        with:
-          path: ~/.cache/pokewilds-libzt-ios
-          key: libzt-ios-mac-${{ hashFiles('tools/build_libzt_ios.sh', 'libzt_patches.py') }}
-
-      - name: Build the ZeroTier plugin
-        if: env.SKIP != 'true'
-        run: CC="xcrun -sdk iphoneos clang" AR="xcrun -sdk iphoneos ar" bash tools/build_libzt_ios.sh
-
-      # Godot's import cache (.godot): only assets that changed since are imported again.
-      - uses: actions/cache@v4
-        if: env.SKIP != 'true'
-        with:
-          path: project/.godot
-          key: godot-import-ios-${{ env.GODOT_VERSION }}-${{ hashFiles('project/assets/**/*.import') }}
-          restore-keys: godot-import-ios-${{ env.GODOT_VERSION }}-
-
-      - name: Export Xcode project
-        if: env.SKIP != 'true'
-        working-directory: project
-        run: |
-          mkdir -p ../build/ios
-          "$GODOT" --headless --import
-          "$GODOT" --headless --export-release "iOS" ../build/ios/Pokewilds.ipa
-
-      # The engine is LTO bitcode, compiled again at every link (minutes): the
-      # linker's cache keeps that work while the engine and Xcode stay the same.
-      - id: xcode
-        if: env.SKIP != 'true'
-        run: echo "version=$(xcodebuild -version | tr -s ' \n' '-')" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
-        if: env.SKIP != 'true'
-        with:
-          path: ~/lto-cache
-          key: ios-lto-${{ steps.xcode.outputs.version }}-${{ env.GODOT_VERSION }}-${{ hashFiles('.github/engine/custom.py', 'engine_modules/**') }}
-          restore-keys: ios-lto-${{ steps.xcode.outputs.version }}-${{ env.GODOT_VERSION }}-
-
-      - name: Build unsigned .app and pack IPA
-        if: env.SKIP != 'true'
-        working-directory: build/ios
-        run: |
-          set -o pipefail
-          # Surface compiler errors as annotations (readable without log access).
-          xcodebuild -project Pokewilds.xcodeproj -scheme Pokewilds -configuration Release \
-            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath dd \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            OTHER_LDFLAGS='$(inherited) -Wl,-cache_path_lto,'"$HOME/lto-cache" build 2>&1 | tee xb.log \
-            || { grep -E -A3 'error[:]|FAILED|ld: |Undefined sym|referenced from|warning: .*(built for|newer)' xb.log | head -80 | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}' | sed 's/^/::error::/'; echo; exit 1; }
-          mkdir Payload
-          cp -R dd/Build/Products/Release-iphoneos/Pokewilds.app Payload/
-          # Drop local/debug symbols from the engine binary; Feather re-signs afterwards.
-          xcrun strip -Sx Payload/Pokewilds.app/Pokewilds
-          du -sh Payload/Pokewilds.app/* | sed 's/^/::notice::/'
-          zip -qry -9 Pokewilds-unsigned.ipa Payload
-
-      - name: Add the IPA to the draft release
-        if: env.SKIP != 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh release upload --clobber "$TAG" build/ios/Pokewilds-unsigned.ipa
-
-  # The IPA's watchdog and fallback. It watches the ios job: when no Mac picks
-  # it up within a minute, or the Mac build fails (or was skipped to test
-  # this), it builds the same IPA on Linux with xtool (tools/ios_xtool): same
-  # stripped engine, version and build id. Xcode, which xtool turns into the
-  # iOS SDK, comes from the private LucaFagnoni/xcode-sdk release through a
-  # read-only token (XCODE_SDK_TOKEN). Its output "ipa" is true when the
-  # release has an IPA from either, so publish never waits for a Mac job that
-  # GitHub takes ~15 minutes to give up on. Never on pull requests.
-  ios_xtool:
-    needs: draft
-    if: github.event_name != 'pull_request'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 150
-    outputs:
-      ipa: ${{ steps.mac.outputs.ipa || steps.upload.outputs.ipa }}
-    env:
-      TAG: ${{ needs.draft.outputs.tag }}
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - name: Wait for the Mac job
-        id: mac
-        run: |
-          jobs="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=50"
-          state() { gh api "$jobs" --jq '.jobs[] | select(.name == "ios") | "\(.status) \(.conclusion)"'; }
-          start=$(date +%s)
-          # A minute for a Mac to pick it up (a skipped job counts as completed).
-          while :; do
-            read -r status conclusion <<< "$(state)"
-            if [ "$status" = in_progress ] || [ "$status" = completed ]; then break; fi
-            if [ $(( $(date +%s) - start )) -ge 60 ]; then
-              echo "::notice::No Mac runner within a minute: building the IPA with xtool"
-              echo "fallback=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            sleep 10
-          done
-          # A Mac took it: wait for its build.
-          while [ "$status" != completed ]; do
-            sleep 30
-            read -r status conclusion <<< "$(state)"
-          done
-          if [ "$conclusion" = success ]; then
-            echo "ipa=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::notice::The Mac job ended $conclusion: building the IPA with xtool"
-            echo "fallback=true" >> "$GITHUB_OUTPUT"
-          fi
-
-      # The ios job's first step looks for this one: a Mac that comes later stops there.
-      - name: Take over from the Mac job
-        if: steps.mac.outputs.fallback == 'true'
-        run: echo "xtool builds the IPA"
-
-      - uses: actions/checkout@v4
-        if: steps.mac.outputs.fallback == 'true'
-        with:
-          fetch-depth: 0
-
-      - name: Download Xcode from the private repository
-        if: steps.mac.outputs.fallback == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.XCODE_SDK_TOKEN }}
-        run: |
-          gh release download xcode-27.1 -R LucaFagnoni/xcode-sdk -D "$RUNNER_TEMP/xcode"
-          cd "$RUNNER_TEMP/xcode"
-          # A release holds the .xip whole, or in pieces when over GitHub's 2 GiB limit.
-          if ls *.part* >/dev/null 2>&1; then cat $(ls *.part* | sort) > Xcode.xip && rm -f *.part*; else mv Xcode_*.xip Xcode.xip; fi
-          ls -la
-
-      - uses: actions/cache@v4
-        if: steps.mac.outputs.fallback == 'true'
-        with:
-          path: ~/pokewilds-ios/cache/engine
-          # The stripped iOS engine, rebuilt only when the profile or the
-          # game's engine module changes.
-          key: xtool-engine-4.7.2-${{ hashFiles('.github/engine/custom.py', 'engine_modules/**') }}
-
-      # That engine's SCons cache: a module change rebuilds only the module.
-      - uses: actions/cache@v4
-        if: steps.mac.outputs.fallback == 'true'
-        with:
-          path: ~/pokewilds-ios/cache/scons-ios
-          key: xtool-scons-${{ env.GODOT_VERSION }}-${{ hashFiles('.github/engine/custom.py', 'engine_modules/**', 'tools/ios_xtool/setup.sh') }}
-          restore-keys: xtool-scons-${{ env.GODOT_VERSION }}-
-
-      # lld's LTO codegen of that engine (see Package.swift): the link takes
-      # seconds instead of ~8 minutes. setup.sh pins xtool, which brings lld.
-      - uses: actions/cache@v4
-        if: steps.mac.outputs.fallback == 'true'
-        with:
-          path: ~/pokewilds-ios/cache/lto
-          key: xtool-lto-${{ env.GODOT_VERSION }}-${{ hashFiles('.github/engine/custom.py', 'engine_modules/**', 'tools/ios_xtool/setup.sh') }}
-          restore-keys: xtool-lto-${{ env.GODOT_VERSION }}-
-
-      # Godot's import cache (.godot): only assets that changed since are imported again.
-      - uses: actions/cache@v4
-        if: steps.mac.outputs.fallback == 'true'
-        with:
-          path: ~/pokewilds-ios/project/.godot
-          key: godot-import-xtool-${{ env.GODOT_VERSION }}-${{ hashFiles('project/assets/**/*.import') }}
-          restore-keys: godot-import-xtool-${{ env.GODOT_VERSION }}-
-
-      # libzt for the ZeroTier plugin (tools/build_libzt_ios.sh), compiled once.
-      - uses: actions/cache@v4
-        if: steps.mac.outputs.fallback == 'true'
-        with:
-          path: ~/pokewilds-ios/cache/libzt
-          key: libzt-ios-xtool-${{ hashFiles('tools/build_libzt_ios.sh', 'libzt_patches.py', 'tools/ios_xtool/setup.sh') }}
-
-      - name: Swift, xtool and the iOS SDK
-        if: steps.mac.outputs.fallback == 'true'
-        run: |
-          bash tools/ios_xtool/setup.sh "$RUNNER_TEMP/xcode/Xcode.xip"
-          rm -rf "$RUNNER_TEMP/xcode"
-
-      # The lobby list's address and password (project/lobby_server.txt, never
-      # in the repository): the secret LOBBY_SERVER holds the file's two lines.
-      # Without it the build runs, but JOIN GAME has no online lobby list.
-      - name: Lobby list address
-        if: steps.mac.outputs.fallback == 'true'
-        env:
-          LOBBY_SERVER: ${{ secrets.LOBBY_SERVER }}
-        run: |
-          if [ -n "$LOBBY_SERVER" ]; then printf '%s\n' "$LOBBY_SERVER" > project/lobby_server.txt
-          else echo "::warning::No LOBBY_SERVER secret: this IPA has no online lobby list"; fi
-
-      # The smoke job already checked this pack with the stripped engine.
-      - name: Build the IPA with xtool
-        if: steps.mac.outputs.fallback == 'true'
-        run: SMOKE=0 bash tools/ios_xtool/build_ipa.sh
-
-      - name: Add the IPA to the draft release
-        id: upload
-        if: steps.mac.outputs.fallback == 'true'
-        run: |
-          gh release upload --clobber "$TAG" "$HOME/pokewilds-ios/Pokewilds-unsigned.ipa"
-          gh release view "$TAG" --json body --jq .body > notes.md
-          echo "" >> notes.md
-          echo "IPA built on Linux with xtool (no macOS runner in time): same engine, version and build id; plain PNG icons and launch screen." >> notes.md
-          gh release edit "$TAG" --notes-file notes.md
-          echo "ipa=true" >> "$GITHUB_OUTPUT"
 
   server:
     needs: draft
@@ -984,8 +647,8 @@ jobs:
       - name: Minify JSON data
         run: python3 .github/engine/minify_json.py project
 
-      # Same build id, compat id and version as the IPA: the APK plays with this
-      # release's IPA and server. Its versionCode is the commit count, so it only goes up.
+      # Same build id, compat id and version as the server: the APK plays with this
+      # release's server. Its versionCode is the commit count, so it only goes up.
       - name: Stamp build id and APK version
         env:
           VERSION: ${{ needs.draft.outputs.version }}
@@ -1089,67 +752,9 @@ jobs:
           [ "$(cat "$RUNNER_TEMP"/worldgen?.log | grep -c '^WORLDGEN: checked')" = 4 ] || failed=1
           exit $failed
 
-  # The quick headless tests of server/ (server/fast_tests.py: four at a time, a
-  # failure annotated, a flaky one run once more), the lobby directory's tests,
-  # and the saves of old games (server/fixtures) loaded by the current code.
-  # Pull requests run it too. The tests run with the Dummy 2D physics server, the
-  # one the phones have (the stock editor has another).
-  tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Godot editor
-        run: |
-          curl -sSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
-          unzip -q godot.zip
-          echo "GODOT=$PWD/Godot_v${GODOT_VERSION}-stable_linux.x86_64" >> "$GITHUB_ENV"
-
-      - uses: actions/cache/restore@v4
-        with:
-          path: project/.godot
-          key: godot-import-server-${{ env.GODOT_VERSION }}-${{ hashFiles('project/assets/**/*.import') }}
-          restore-keys: godot-import-server-${{ env.GODOT_VERSION }}-
-
-      - name: Import
-        working-directory: project
-        run: |
-          "$GODOT" --headless --import
-          printf '[physics]\n2d/physics_engine="Dummy"\n' > override.cfg
-
-      - name: Lobby directory tests
-        run: node lobby-directory/test/directory.test.mjs
-
-      - name: Headless tests
-        run: python3 -u server/fast_tests.py "$GODOT" --jobs 4
-
-      # No proxy tile made in a per-frame function (tools/lint_tile_at.py).
-      - name: Per-frame tile_at lint
-        run: python3 tools/lint_tile_at.py
-
-      # The world played the same way gives the same saved state and tiles
-      # (server/world_sim_hash.gd): a refactor that changes behaviour shows here.
-      - name: World simulation hash
-        run: |
-          "$GODOT" --headless --fixed-fps 60 --path project -s "$PWD/server/world_sim_hash.gd" -- \
-            --expect=4e1cc7e47c23a84d7b84c1c02ef5ed64d13658ef1b9dd234d96af55050d08203 2>&1 | tee sim.log
-          grep -q "4e1cc7e47c23a84d7b84c1c02ef5ed64d13658ef1b9dd234d96af55050d08203" sim.log
-
-      # The world's Pokemon played the same way give the same population
-      # (server/population_sim_hash.gd), drawn and as the dedicated server runs it.
-      - name: Population simulation hash
-        run: |
-          "$GODOT" --headless --fixed-fps 60 --path project -s "$PWD/server/population_sim_hash.gd" -- \
-            --expect=d60bd575a137bc966c7eb37c8c5fbd67e7dba8c36692c4e71ab634739865e312 2>&1 | tee pop.log
-          grep -q "d60bd575a137bc966c7eb37c8c5fbd67e7dba8c36692c4e71ab634739865e312" pop.log
-          "$GODOT" --headless --fixed-fps 60 --path project -s "$PWD/server/population_sim_hash.gd" -- \
-            --no-sprites --expect=d60bd575a137bc966c7eb37c8c5fbd67e7dba8c36692c4e71ab634739865e312 2>&1 | tee pop_server.log
-          grep -q "d60bd575a137bc966c7eb37c8c5fbd67e7dba8c36692c4e71ab634739865e312" pop_server.log
-
   publish:
-    needs: [draft, smoke, ios_xtool, server, linux, macos, android, worldgen, tests]
-    # The IPA from the Mac or, failing that, from xtool: ios_xtool says which.
-    if: ${{ always() && needs.draft.result == 'success' && needs.smoke.result == 'success' && needs.server.result == 'success' && needs.linux.result == 'success' && needs.macos.result == 'success' && needs.android.result == 'success' && needs.worldgen.result == 'success' && needs.tests.result == 'success' && needs.ios_xtool.outputs.ipa == 'true' }}
+    needs: [draft, android]
+    if: ${{ always() && needs.draft.result == 'success' && needs.android.result == 'success' }}
     runs-on: ubuntu-latest
     env:
       GH_TOKEN: ${{ github.token }}
@@ -1162,26 +767,6 @@ jobs:
           # Keep the ten newest builds.
           gh release list --limit 100 --exclude-drafts --json tagName --jq '.[].tagName' | grep '^build-' | tail -n +11 \
             | while read -r old; do gh release delete "$old" --cleanup-tag --yes; done
-
-  # The sideloading source (Feather, AltStore, SideStore...): apps.json with
-  # every published IPA, made again from the releases after each one and kept
-  # on the "source" branch (the README gives its address). A job of its own, so
-  # a failure here never touches the release.
-  source:
-    needs: publish
-    if: ${{ always() && needs.publish.result == 'success' }}
-    runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Update apps.json on the source branch
-        run: |
-          gh api "repos/$GH_REPO/releases?per_page=100" | python3 .github/source/make_source.py > apps.json
-          sha=$(gh api "repos/$GH_REPO/contents/apps.json?ref=source" --jq .sha)
-          gh api -X PUT "repos/$GH_REPO/contents/apps.json" --silent -f branch=source -f sha="$sha"             -f message="Source: build of ${GITHUB_SHA::8}" -f content="$(base64 -w0 apps.json)"
 
   # A build that was not published (a job failed, was cancelled or never got a
   # runner) leaves no half release behind. To retry it, use "Re-run all jobs":
