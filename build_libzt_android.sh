@@ -35,8 +35,32 @@ sed -i.bak \
     -e "s/version '3\\.22\\.1'/version '$CMAKE_VERSION'/" \
     "$GRADLE"
 
+# Maven Central (repo.maven.apache.org) was unreachable from CI: AGP's
+# transitive deps (asm, fastutil, ...) all failed there while Google's
+# mirror worked. Add Google's Maven Central mirror ahead of mavenCentral()
+# in the root build.gradle so the build never depends on that host alone.
+ROOT_GRADLE="$WORK/pkg/android/build.gradle"
+python3 - "$ROOT_GRADLE" <<'PYEOF'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+mirror = "        maven { url 'https://maven-central.storage-download.googleapis.com/maven2' }"
+n = s.count("        mavenCentral()")
+if n == 0:
+    print("mirror patch: mavenCentral() not found in " + p, file=sys.stderr)
+    sys.exit(1)
+s = s.replace("        mavenCentral()", mirror + "\n        mavenCentral()")
+open(p, "w").write(s)
+PYEOF
+
 cd "$WORK/pkg/android"
 chmod +x gradlew
-./gradlew --no-daemon assembleRelease
+attempt=1
+until ./gradlew --no-daemon assembleRelease; do
+  if [ "$attempt" -ge 3 ]; then echo "libzt Gradle build failed after 3 attempts"; exit 1; fi
+  echo "libzt Gradle build attempt $attempt failed; retrying in 30s..."
+  sleep 30
+  attempt=$((attempt + 1))
+done
 cp app/build/outputs/aar/libzt-release.aar "$OUT/libzt-release.aar"
 echo "Built $OUT/libzt-release.aar"
