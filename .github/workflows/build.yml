@@ -213,11 +213,10 @@ jobs:
 
       - name: Release keystore
         env:
-          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
-          if [ -z "$KEYSTORE" ] || [ -z "$PASSWORD" ]; then echo "::error::ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD are needed to sign the APK"; exit 1; fi
-          printf '%s' "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.keystore"
+          if [ -z "$PASSWORD" ]; then echo "::error::ANDROID_KEYSTORE_PASSWORD is needed to sign the APK"; exit 1; fi
+          cp tools/release.keystore "$RUNNER_TEMP/release.keystore"
           echo "GODOT_ANDROID_KEYSTORE_RELEASE_PATH=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
           echo "GODOT_ANDROID_KEYSTORE_RELEASE_USER=pokewilds" >> "$GITHUB_ENV"
 
