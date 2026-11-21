@@ -118,11 +118,6 @@ static func harvest(state, player: Dictionary, cell: Vector2i, move: String, out
         out.reason = "not_a_tree"
         return
     var key := (tile.name + " " + tile.name_upper).to_lower()
-    if move == "CUT" and kind == "tree" and TileRules.is_large_tree(state, cell) and "tree4" not in key and \
-            not FieldMoveData.is_fully_evolved(String(player.get("species", ""))):
-        out.events.append(["message", "This tree needs a fully evolved Pokemon to CUT it."])
-        out.reason = "needs_evolved"
-        return
     if move in ["SMASH", "HEADBUTT"] and kind != "rock":
         out.events.append(["message", "%s can't be used on that." % move])
         out.reason = "not_a_rock"

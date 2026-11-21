@@ -83,8 +83,9 @@ def main() -> int:
                 f"sheet frame total mismatch: {folder.name}", failures)
 
     state_text = (project / "scripts/pokemon_state.gd").read_text()
-    require(re.search(r"const\s+SHINY_RATE\s*:=\s*256\b", state_text) is not None,
-            "runtime shiny rate is not the source 1/256", failures)
+    # Fork deviation: shiny rate raised to 1/50 (source is 1/256).
+    require(re.search(r"const\s+SHINY_RATE\s*:=\s*50\b", state_text) is not None,
+            "runtime shiny rate is not the fork 1/50", failures)
 
     if failures:
         print("SOURCE PARITY AUDIT FAILED")

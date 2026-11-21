@@ -102,22 +102,14 @@ func _initialize() -> void:
     check(state.source_interior_mutations.get(Vector2i(1, 1), {}).get("kind") == "TILE_NAMES", "the cut is saved")
     var dirty := state.take_dirty()
     check(dirty.size() == 1 and dirty[0][0] == "source_interior_mutations", "only the mutation is dirty")
-    # A tree: one LOG; a large tree needs an evolved Pokemon.
+    # A tree: one LOG; a large tree gives 2-7 LOG to any Pokemon.
     cut = FieldCut.apply(state, player, {"move":"CUT", "cell":Vector2i(3, 1)}, rng(1))
     check(cut.ok and cut.grant == {"LOG":1} and names(state, Vector2i(3, 1))[1] == "", "CUT a tree: one LOG, the tree gone")
     check(cut.events.any(func(event): return event[0] == "cut_halves" and event[2] is SourceTile and event[2].name_upper == "tree2"), "the split is drawn from the tree as it was")
     cut = FieldCut.apply(state, player, {"move":"CUT", "cell":Vector2i(5, 1)}, rng(1))
-    check(not cut.ok and cut.reason == "needs_evolved" and names(state, Vector2i(5, 1))[1] == "tree_large2", "a large tree needs a fully evolved Pokemon")
-    var evolved := ""
-    for species in ["machamp", "venusaur", "charizard", "blastoise", "scizor"]:
-        if FieldMoveData.is_fully_evolved(species): evolved = species; break
-    check(not evolved.is_empty(), "a fully evolved species to test with")
-    var strong := player.duplicate()
-    strong["species"] = evolved
-    cut = FieldCut.apply(state, strong, {"move":"CUT", "cell":Vector2i(5, 1)}, rng(7))
     var logs := int(cut.grant.get("LOG", 0))
-    check(cut.ok and logs >= 2 and logs <= 7, "a large tree gives 2-7 LOG")
-    check(FieldCut.apply(area(), strong, {"move":"CUT", "cell":Vector2i(5, 1)}, rng(7)).grant == cut.grant, "the same random numbers, the same LOG")
+    check(cut.ok and logs >= 2 and logs <= 7 and names(state, Vector2i(5, 1))[1] == "", "a large tree gives 2-7 LOG to any Pokemon")
+    check(FieldCut.apply(area(), player, {"move":"CUT", "cell":Vector2i(5, 1)}, rng(1)).grant == cut.grant, "the same random numbers, the same LOG")
     # SMASH a rock: HARD STONE and the route's hidden Pokemon.
     var smash := FieldCut.apply(state, player, {"move":"SMASH", "cell":Vector2i(7, 1)}, rng(3))
     check(smash.ok and int(smash.grant.get("HARD STONE", 0)) == 1, "SMASH gives HARD STONE")

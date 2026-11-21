@@ -4,7 +4,7 @@ extends RefCounted
 const PokemonData = preload("res://scripts/pokemon_data.gd")
 
 const STAT_KEYS := ["hp", "attack", "defense", "speed", "sp_attack", "sp_defense"]
-const SHINY_RATE := 256
+const SHINY_RATE := 50
 const NATURE_ORDER := [
     "HARDY", "LONELY", "BRAVE", "ADAMANT", "NAUGHTY",
     "BOLD", "DOCILE", "RELAXED", "IMPISH", "LAX",

@@ -1330,12 +1330,6 @@ func harvest_resource_with_move(cell:Vector2i,move:String)->void:
         if kind not in ["tree", "bush"]:
             world.world_message.emit("CUT can't be used on that.")
             return
-        var source_name := world._resource_source_name(data)
-        if kind == "tree" and bool(data.get("large", false)) and \
-                source_name != "tree4" and \
-                not FieldMoveData.is_fully_evolved(world.active_field_species):
-            world.world_message.emit("This tree needs a fully evolved Pokemon to CUT it.")
-            return
         world._harvest_resource(cell, move)
         return
     if move in ["SMASH", "HEADBUTT"]:

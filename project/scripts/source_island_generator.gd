@@ -3469,7 +3469,7 @@ func _make_pokemon_record(name: String, level: int, extra := {}) -> Dictionary:
     var record := {
         "name": name,
         "level": level,
-        "shiny": pokemon_random.next_int(256) == 0
+        "shiny": pokemon_random.next_int(50) == 0
     }
     var gender_ratio := String(
         PokemonData.info(name).get("gender_ratio", "GENDER_UNKNOWN")
