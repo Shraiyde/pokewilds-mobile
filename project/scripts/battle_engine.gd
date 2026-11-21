@@ -1684,23 +1684,19 @@ static func best_switch_index(party: Array, active_indices: Array,
             best_index = index
     return best_index
 
-static func experience_reward(defeated: Dictionary, participants: int = 1) -> int:
-    # Battle.calcFaintExp: divide before multiplying, including shared rounding.
-    if participants <= 0: return 0
+static func experience_reward(defeated: Dictionary) -> int:
+    # Fork: Exp. Share — every party member earns the full reward, boosted 25%.
     var base_exp := int(PokemonData.info(String(defeated.species)).get("base_exp", 64))
-    return int(base_exp * int(defeated.level) / (7 * participants)) * 5
+    return int(int(base_exp * int(defeated.level) / 7) * 5 * 1.25)
 
-static func experience_recipients(party: Array, participants: Array,
-        active_index: int, capture: bool = false) -> Array[int]:
-    # CheckEndOfBattle / CatchPokemonWobblesThenCatch: active recipient first.
+static func experience_recipients(party: Array, active_index: int) -> Array[int]:
+    # Fork: Exp. Share — every conscious party member earns EXP, not just the battlers.
     var result: Array[int] = []
     for index in range(party.size()):
         var pokemon: Dictionary = party[index]
         if int(pokemon.get("hp", 0)) <= 0 or int(pokemon.get("level", 1)) >= 100:
             continue
-        if capture:
-            if bool(pokemon.get("is_egg", false)): continue
-        elif not participants.has(index):
+        if bool(pokemon.get("is_egg", false)):
             continue
         if index == active_index: result.push_front(index)
         else: result.append(index)

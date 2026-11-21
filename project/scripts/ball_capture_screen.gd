@@ -63,7 +63,7 @@ func play(owner_main: Node, pokemon: Dictionary, ball_name: String, outcome: int
             var frame:=AtlasTexture.new();frame.atlas=sheet;frame.region=Rect2(pose*12,0,12,12)
             ball.texture=frame
             await wait_frames(3)
-    if outcome<0:
+    if outcome<0 or outcome>=3:
         await wait_frames(24)
         for offset in [Vector2(-12,-9),Vector2(10,-16),Vector2(23,-9)]:
             picture(preload("res://scripts/menu_symbol_palette.gd").shiny(),ball.position+offset,Vector2(8,8))

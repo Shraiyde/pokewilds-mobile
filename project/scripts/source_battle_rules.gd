@@ -28,7 +28,8 @@ static func catch_threshold(target: Dictionary, modified_rate: int) -> int:
         h = int(int(h / 2) / 2)
     var amount := maxi(1, int((m - h) * mini(255, modified_rate) / m))
     if String(target.get("status", "")) in ["SLEEP", "FREEZE"]: amount += 10
-    return mini(255, amount)
+    # Fork: catch odds doubled (three shakes also count as a catch now).
+    return mini(255, amount * 2)
 
 static func ball_rate(target: Dictionary, player: Dictionary, ball: String, context: Dictionary) -> int:
     var info := PokemonData.info(String(target.species))

@@ -84,7 +84,8 @@ static func catch_value(target: Dictionary, party: Array, ball: String, context:
         maximum = maximum/2/2
         hp = hp/2/2
     var value = maxi(1,int((maximum-hp)*rate/maximum)) if maximum!=0 else 1
-    return mini(255,value+(10 if status in ["sleep","freeze"] else 0))
+    # Fork: catch odds doubled (three shakes also count as a catch now).
+    return mini(255, value * 2 + (10 if status in ["sleep","freeze"] else 0))
 
 static func roll(target: Dictionary, party: Array, ball: String, context: Dictionary, rng: RandomNumberGenerator) -> int:
     if ball=="MASTER BALL": return -1

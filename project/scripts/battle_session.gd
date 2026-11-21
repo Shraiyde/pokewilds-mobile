@@ -949,7 +949,7 @@ func _enemy_fainted() -> void:
     Battle.reset_battle_state(player)
     var effort := PokemonState.grant_evs(player, enemy)
     party[party_index] = player
-    var recipients := Battle.experience_recipients(party, participants, party_index)
+    var recipients := Battle.experience_recipients(party, party_index)
     var message := "%s fainted!" % Battle.display_name(enemy)
     if int(effort.get("amount", 0)) > 0:
         message += " +%d %s EV." % [int(effort.amount),
@@ -1063,7 +1063,7 @@ func _turn_ball(ball: String, action: Dictionary) -> void:
         "indoors":bool(action.get("indoors", world.get("indoors", false))),
         "surfing":bool(action.get("surfing", world.get("surfing", false))),
         "fishing":bool(context.get("fishing", false))}, rng)
-    var captured_successfully := capture_outcome == -1
+    var captured_successfully := capture_outcome == -1 or capture_outcome >= 3
     await _emit({"kind":"throw", "ball":ball, "captured":captured_successfully,
         "shakes":3 if captured_successfully else capture_outcome})
     if not captured_successfully:
@@ -1080,7 +1080,7 @@ func _turn_ball(ball: String, action: Dictionary) -> void:
         await _command()
         return
     # Snapshot before routing the caught Pokemon: source excludes the new catch.
-    var capture_recipients := Battle.experience_recipients(party, participants, party_index, true)
+    var capture_recipients := Battle.experience_recipients(party, party_index)
     Battle.reset_battle_state(enemy)
     var captured := enemy.duplicate(true)
     captured["pokeball"] = ball
@@ -1124,7 +1124,7 @@ func _turn_poke_doll() -> void:
 # --- experience, levels, moves and evolution ------------------------------------------
 
 func _award_experience(defeated: Dictionary, recipients: Array[int]) -> void:
-    var reward := Battle.experience_reward(defeated, recipients.size())
+    var reward := Battle.experience_reward(defeated)
     for index in recipients:
         var pokemon: Dictionary = party[index]
         await _say("%s gained %d EXP. Points!" % [
@@ -1410,13 +1410,13 @@ func _resolve_double_faints() -> bool:
         defeated["_double_faint_processed"] = true
         faint_messages.append("%s fainted!" % Battle.display_name(defeated))
         sync_double_records()
-        var recipients := Battle.experience_recipients(party, participants, party_index)
-        var reward := Battle.experience_reward(defeated, recipients.size())
+        var recipients := Battle.experience_recipients(party, party_index)
+        var reward := Battle.experience_reward(defeated)
         for index in recipients:
             var recipient: Dictionary = party[index]
             PokemonState.grant_evs(recipient, defeated)
             progression_rewards.append({"pokemon": recipient, "party_index": index, "reward": reward})
-        faint_messages.append("Participating Pokemon gained %d EXP." % reward)
+        faint_messages.append("Your Pokemon gained %d EXP." % reward)
     if not faint_messages.is_empty():
         sync_double_records()
         await _emit({"kind":"text", "text":" ".join(faint_messages), "wait":0.125, "hud":true})

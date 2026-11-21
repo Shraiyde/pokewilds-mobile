@@ -596,7 +596,7 @@ func present_capture(sprite: Sprite2D, center: Vector2, ball: String, outcome: i
             frame.region = Rect2(pose*12,0,12,12)
             projectile.texture = frame
             if not await capture_pause(3,serial): return false
-    if outcome<0:
+    if outcome<0 or outcome>=3:
         if not await capture_pause(24,serial): return false
         var stars = []
         for offset in [Vector2(-9,-7),Vector2(0,-12),Vector2(9,-7)]:
@@ -662,12 +662,12 @@ func capture(id: int, ball: String, direction: Vector2i, serial: int) -> void:
         if not await present_capture(sprite,center,ball,result,serial): return
         world().set_gameplay_enabled(false)
     sprite.hide()
-    if result<0:
+    if result<0 or result>=3:
         if not main._can_receive_overworld_pokemon():
             main._show_message("There is no room for another POKEMON.")
             if online:await main.coop_game.wild.finish_encounter("ran")
             return
-        var recipients = BattleEngine.experience_recipients(main.caught_pokemon,[],main._first_healthy_party_index(),true)
+        var recipients = BattleEngine.experience_recipients(main.caught_pokemon, main._first_healthy_party_index())
         pokemon.pokeball = ball
         if ball=="HEAL BALL":
             pokemon.hp = pokemon.max_hp
@@ -737,7 +737,7 @@ func capture(id: int, ball: String, direction: Vector2i, serial: int) -> void:
         if result>=0:
             for key in ["aggro_player","ball_alert_until","flee_steps","ball_flee_until"]:
                 if record.has(key):aftermath[key]=record[key]
-        await main.coop_game.wild.finish_encounter("captured" if result<0 else "ran",aftermath)
+        await main.coop_game.wild.finish_encounter("captured" if result<0 or result>=3 else "ran",aftermath)
 
 ## Gives the catch's EXP without leaving the overworld. Levels and moves that
 ## fit are applied at once and written into `notices`. Returns, per party slot,
@@ -746,7 +746,7 @@ func capture(id: int, ball: String, direction: Vector2i, serial: int) -> void:
 func quiet_experience(defeated: Dictionary, recipients: Array, notices: Array) -> Dictionary:
     var follow_up = {}
     if recipients.is_empty(): return follow_up
-    var reward = BattleEngine.experience_reward(defeated,recipients.size())
+    var reward = BattleEngine.experience_reward(defeated)
     for index in recipients:
         var member: Dictionary = main.caught_pokemon[index]
         var title = PokemonState.display_name(member).to_upper()
