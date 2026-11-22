@@ -29,6 +29,16 @@ from collections import defaultdict
 
 MOD_ROOT = "BansheeStudio's 3rd Gen Overhaul Mod/"
 
+# Healthbar frames the mod must NOT overwrite: the mod only ships GSC-style
+# frames, but basename matching would also clobber the non-GSC frames the
+# battle UI actually uses, which makes the HP bars vanish. Keep the originals.
+SKIP_BASENAMES = {
+    "enemy_healthbar1.png",
+    "enemy_healthbar1_inverse.png",
+    "friendly_healthbar1.png",
+    "friendly_healthbar1_inverse.png",
+}
+
 
 def index_by_basename(root, exts=(".png", ".ogg", ".wav")):
     """Map basename -> list of paths under root (recursive)."""
@@ -46,12 +56,16 @@ def overlay_by_basename(mod_files, target_index, prefer_substr=(), skip_substr=(
     prefer_substr: if given, only overwrite targets whose path contains one
     of these substrings (when any match exists); otherwise overwrite all.
     skip_substr: never overwrite targets whose path contains these.
+    Files in SKIP_BASENAMES are never overwritten (keeps working originals).
     Returns (overwritten, skipped_no_match).
     """
     overwritten = 0
     skipped = 0
     for mod_path in mod_files:
         base = os.path.basename(mod_path)
+        if base in SKIP_BASENAMES:
+            skipped += 1
+            continue
         candidates = [p for p in target_index.get(base, [])
                       if not any(s in p for s in skip_substr)]
         if prefer_substr:
@@ -125,6 +139,20 @@ def main():
             prefer_substr=("source_exact", "source_ui"),
             skip_substr=("dark_mode",))
         report(cat, over, skip)
+
+    # --- HP bars red: the full-HP fill (health1.png, green) is replaced with
+    # the red fill (health_red.png) so the HP bar reads red at any HP. ---
+    red_done = 0
+    for dirpath, _dirs, files in os.walk(os.path.join(project_root, "assets")):
+        if "dark_mode" in dirpath or "lofi" in dirpath:
+            continue
+        if "health1.png" in files and "health_red.png" in files:
+            src = os.path.join(dirpath, "health_red.png")
+            dst = os.path.join(dirpath, "health1.png")
+            shutil.copyfile(src, dst)
+            red_done += 1
+    print(f"hp-red: set health1.png to red in {red_done} dirs")
+    total_over += red_done
 
     # --- Player sprites: mods/player/<char>/* -> gen3_players/<char>/* ---
     players_dir = os.path.join(project_root, "assets", "gen3_players")
