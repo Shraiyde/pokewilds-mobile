@@ -17,8 +17,7 @@ extends Node
 ## every new area itself (server_area_maker.gd), the first one when the first
 ## player comes; a new player starts on that first area's spawn. A phone hosting
 ## runs the same host code with its own player. The router port is opened by
-## UPnP when it can be. A server on the game's ad-hoc ZeroTier network is reached
-## by the phones with no port forwarding (see README_SERVER.md).
+## UPnP when it can be.
 ## Settings come from server.cfg beside the exe (or --config PATH), then the
 ## command line. Without --server this node does nothing.
 ## `--join HOST[:PORT] [--id ID] [--password P] [--data DIR] [--quit-after-join]
@@ -212,13 +211,6 @@ func show_addresses()->void:
         # Tailscale (and other carrier-grade ranges) are a VPN here, not the Wi-Fi.
         var label:="Tailscale/VPN:  " if address_kind(endpoint.address)=="cgnat" else "Same Wi-Fi:     "
         print("SERVER  ",label,endpoint.address,":",port,_code(JoinCode.encode(endpoint.address)))
-    # The ad-hoc ZeroTier network (no port forwarding): the phones are on it
-    # already through the game, this PC joins it with the ZeroTier app.
-    var zt:=Network.zerotier_address()
-    if not zt.is_empty():
-        print("SERVER  ZeroTier:      [",zt,"]:",port)
-        print("SERVER    Phones join it with no port forwarding: MY SERVERS, address [",zt,"]:",port)
-        print("SERVER    (or tap this server in the online games list when it is listed)")
     var kind:=address_kind(outside)
     _outside=outside if kind.is_empty() else ""
     if outside.is_empty():
@@ -233,8 +225,6 @@ func show_addresses()->void:
         print("SERVER    router address ",outside,"), so nobody outside can reach this PC.")
         print("SERVER    Ask the provider for a public IPv4 address, or use Tailscale on this")
         print("SERVER    PC and on the phones (see README_SERVER.md).")
-        print("SERVER    Or use ZeroTier on this PC: join network ",Network.zerotier_network_id()," (zerotier-cli join ",Network.zerotier_network_id(),")")
-        print("SERVER    then type `address` here for this server's ZeroTier address. Phones need nothing extra.")
         for address in IP.get_local_addresses():
             if ":" in address and (address.begins_with("2") or address.begins_with("3")):
                 print("SERVER    Phones with IPv6 may still try [",address,"]:",port," if the router lets it in.");break
@@ -245,9 +235,6 @@ func show_addresses()->void:
         else:
             print("SERVER    The router did not open the port by itself (UPnP off?). Turn UPnP on in the")
             print("SERVER    router, or forward TCP port ",port," to ",lan[0].address if not lan.is_empty() else "this PC"," by hand (README_SERVER.md).")
-    if zt.is_empty() and kind!="cgnat" and not (kind.is_empty() and bool(router.get("mapped",false))):
-        print("SERVER  ZeroTier:      not on this PC: join network ",Network.zerotier_network_id()," (zerotier-cli join ",Network.zerotier_network_id(),")")
-        print("SERVER    and type `address` again: phones then join with no port forwarding.")
     print(line)
 
 func _code(code:String)->String:
@@ -491,10 +478,8 @@ func _announce()->void:
     var record:Dictionary=coop._lobby_record()
     if record.is_empty():return
     # The address phones reach it by: the public one found at startup, else
-    # the ZeroTier one when this PC is on the ad-hoc network (no port
-    # forwarding needed), else the one the directory sees the request come from.
-    var zt:=Network.zerotier_address()
-    record["address"]=_outside if not _outside.is_empty() else (zt if not zt.is_empty() else "auto")
+    # the one the directory sees the request come from.
+    record["address"]=_outside if not _outside.is_empty() else "auto"
     if Time.get_ticks_msec()<_list_next and record==_list_sent:return
     _list_sent=record;_list_next=Time.get_ticks_msec()+LIST_MS
     if _list_key.is_empty():_list_key=preload("res://scripts/coop_random.gd").hex(16)
