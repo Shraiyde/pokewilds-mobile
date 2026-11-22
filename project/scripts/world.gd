@@ -105,7 +105,7 @@ const MAP_SIZE_PRESETS := [
     Vector2i(96, 72),
     Vector2i(112, 84),
     Vector2i(128, 96),
-    Vector2i(144, 108)
+    Vector2i(256, 192)
 ]
 
 var map_w: int = 64
