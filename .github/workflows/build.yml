@@ -8,7 +8,7 @@ name: PokeWilds build
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, gen3-overhaul]
     tags: ["v*"]
   # Pull requests build and test the server, but publish nothing.
   pull_request:
@@ -183,6 +183,13 @@ jobs:
       # Same data as the other builds, so the bundled mods (and their digest) match.
       - name: Minify JSON data
         run: python3 .github/engine/minify_json.py project
+      # Gen 3 Overhaul mod (GameBanana 454615 v1.4.2): overlay Gen 3 tiles,
+      # sprites, UI and audio onto the project assets before the export.
+      # Only this branch has this step; main is untouched.
+      - name: Apply Gen 3 Overhaul mod
+        run: |
+          curl -L --fail --retry 3 -o "$RUNNER_TEMP/gen3_mod.zip" "https://gamebanana.com/dl/1014791"
+          python3 tools/apply_gen3_mod.py "$RUNNER_TEMP/gen3_mod.zip" project
 
       # Same build id, compat id and version as the server: the APK plays with this
       # release's server. Its versionCode is the commit count, so it only goes up.
