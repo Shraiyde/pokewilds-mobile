@@ -386,48 +386,33 @@ func run_experience_progression(pokemon: Dictionary, amount: int,
         String(pokemon.get("species", "machop")), int(pokemon.get("level", 1)))))
     var target_exp := current_exp + maxi(0, amount)
     var gained_level := false
-    if int(pokemon.get("level", 1)) < 100 and target_exp > current_exp:
-        main._play_source_battle_sound("xp-gain1.ogg")
-        await main.get_tree().create_timer(9.0 * main.SOURCE_FRAME_TIME).timeout
-
+    var moves_to_learn: Array = []
+    # No EXP bar animation: jump straight to the level the EXP reaches,
+    # collecting every move unlocked along the way.
     while int(pokemon.get("level", 1)) < 100:
         var next_level_exp := BattleEngine.exp_for_level(
             String(pokemon.get("species", "machop")),
             int(pokemon.get("level", 1)) + 1)
         if target_exp < next_level_exp:
             break
-        await _animate_experience_segment(pokemon, current_exp, next_level_exp)
         pokemon["exp"] = next_level_exp
-        main.battle_audio.stop()
-        main._play_level_up_sound()
-        set_player_exp_bar_ratio(1.0)
-        # The source holds a completely filled bar before it rolls into the
-        # next level rather than clearing it on the same frame.
-        await main.get_tree().create_timer(9.0 * main.SOURCE_FRAME_TIME).timeout
         var level_result := BattleEngine.gain_level(pokemon)
         gained_level = true
-        current_exp = next_level_exp
+        for move in level_result.get("moves", []):
+            moves_to_learn.append(move)
         if party_index >= 0 and party_index < main.caught_pokemon.size():
             main.caught_pokemon[party_index] = pokemon
-        main._update_battle_hud()
-        main._play_source_battle_sound("fanfare1.ogg")
-        await main._type_battle_text("%s grew to level %d!" % [
-            PokemonState.display_name(pokemon).to_upper(), int(pokemon.level)])
-        await _learn_level_moves(pokemon, level_result.get("moves", []))
-        if int(pokemon.get("level", 1)) < 100 and target_exp >= \
-                BattleEngine.exp_for_level(String(pokemon.species),
-                    int(pokemon.level) + 1):
-            main._play_source_battle_sound("xp-gain1.ogg")
-
-    if int(pokemon.get("level", 1)) < 100 and target_exp > current_exp:
-        await _animate_experience_segment(pokemon, current_exp, target_exp)
     pokemon["exp"] = target_exp
-    main.battle_audio.stop()
     if party_index >= 0 and party_index < main.caught_pokemon.size():
         main.caught_pokemon[party_index] = pokemon
+    # Jump the EXP bar straight to its final position.
+    set_player_exp_bar_ratio(float(_experience_bar_index(
+        String(pokemon.get("species", "machop")), int(pokemon.get("level", 1)),
+        target_exp)) / float(SOURCE_EXP_UNITS))
     main._update_battle_hud()
-
+    # Move choices still appear, in the order the levels were gained.
     if gained_level:
+        await _learn_level_moves(pokemon, moves_to_learn)
         await _show_level_up_stats(pokemon)
         if not defer_evolution:
             await main._check_reward_evolution(pokemon, party_index)
